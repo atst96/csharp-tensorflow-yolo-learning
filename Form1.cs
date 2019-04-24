@@ -18,7 +18,7 @@ namespace TensorFlowSharpSSD
         public const string LabelFontName = "TakaoPGothic";
 
         public const float ScoreThreshold = 0.5f;
-        public const string GraphFilePath = "./frozen_inference_graph.pb";
+        public const string GraphFilePath = "./yolov3_gpu_nms.pb";
         public const string LabelFilePath = "./labels.txt";
 
         private LabelInfo[] _labels;
@@ -40,7 +40,7 @@ namespace TensorFlowSharpSSD
 
             this.SetStatusText("Loading graph data...");
 
-            this._objectDetector = new ObjectDetector(GraphFilePath);
+            this._objectDetector = new ObjectDetector(GraphFilePath, 416, 416, isGpuMode: true);
 
             this.HideStatusText();
 

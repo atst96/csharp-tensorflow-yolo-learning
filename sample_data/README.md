@@ -1,10 +1,11 @@
 ﻿### モデルについて
-学習済みモデルのグラフデータを frozen_inference_graph.pb というファイル名で実行可能ファイルと同じディレクトリに置いてください。
+[tensorflow-yolov3](https://github.com/YunYang1994/tensorflow-yolov3) で作成したモデルを前提としています。
 
-自身で学習したモデルデータの場合、*.ckptファイルは読み込めないので export_inference_graph.py で出力してください。
+学習済みモデルのグラフデータを yolov3_gpu_nms.pb というファイル名で実行可能ファイルと同じディレクトリに置いてください。
 
-とりあえず実行してみたい場合は、 ["Tensorflow detection model zoo
-"](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/detection_model_zoo.md#coco-trained-models) から適当なモデルをダウンロード／解凍し、その中にある frozen_inference_graph.pb を使用してください。
+~~自身で学習したモデルデータの場合、~~ *.weightファイルの場合は convert_weight.py で変換して出力された上記ファイルを使用してください。
+
+とりあえず実行してみたい場合は、 [tensorflow-yolov3](https://github.com/YunYang1994/tensorflow-yolov3#part-2-quick-start) のyolov3.weightを使用してみてください。
 
 ### ラベルについて
 実行可能ファイルと同じディレクトリに labels.txt（UTF-16）を作成し、ラベル名を改行を区切りとして記述してください。
@@ -28,5 +29,4 @@ person
 bicycle
 ```
 
-["Tensorflow detection model zoo
-"](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/detection_model_zoo.md#coco-trained-models) のモデルデータのラベルは /sample_data/labels.txt に置いてあります（たぶんこれで動くはず）。
+[tensorflow-yolov3](https://github.com/YunYang1994/tensorflow-yolov3#part-2-quick-start) のモデルデータのラベルは /sample_data/labels.txt に置いてあります（たぶんこれで動くはず）。

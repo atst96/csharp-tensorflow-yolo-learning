@@ -11,7 +11,19 @@ namespace TensorFlowSharpSSD
     {
         public static T GetValue<T>(this TFTensor tensor, bool jagged = true)
         {
-            return (T)tensor.GetValue(jagged);
+            if (tensor.Shape.Length == 1 && tensor.Shape[0] == 0)
+            {
+                return default;
+            }
+
+            var value = tensor.GetValue(jagged);
+
+            if (value == default)
+            {
+                return default;
+            }
+
+            return (T)value;
         }
 
         public static T GetValue<T>(this TFTensor[] tensor, int index, bool jagged = true)

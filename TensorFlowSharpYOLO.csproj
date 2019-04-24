@@ -7,7 +7,7 @@
     <ProjectGuid>{BF06D05F-5565-4F2F-955E-5958F4DEB80F}</ProjectGuid>
     <OutputType>WinExe</OutputType>
     <RootNamespace>TensorFlowSharpSSD</RootNamespace>
-    <AssemblyName>TensorFlowSharpSSD</AssemblyName>
+    <AssemblyName>TensorFlowSharpYOLO</AssemblyName>
     <TargetFrameworkVersion>v4.7</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>

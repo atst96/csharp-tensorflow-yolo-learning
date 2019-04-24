@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
@@ -17,22 +18,41 @@ namespace TensorFlowSharpSSD
         private readonly TFOutput _detectionInputTensor;
         private readonly TFOutput[] _detectionOutputTensors;
 
-        public ObjectDetector(string graphPath)
+        public bool IsGpuMode { get; }
+        public int Width { get; }
+        public int Height { get; }
+
+        public ObjectDetector(string graphPath, int width, int height, bool isGpuMode = false)
         {
+            this.Width = width;
+            this.Height = height;
+            this.IsGpuMode = isGpuMode;
+
             using (var graph = new TFGraph())
             {
                 var model = File.ReadAllBytes(graphPath);
                 graph.Import(new TFBuffer(model));
 
                 this._session = new TFSession(graph);
-                this._detectionInputTensor = graph["image_tensor"][0];
-                this._detectionOutputTensors = new[]
+                this._detectionInputTensor = graph["Placeholder"][0];
+
+                if (isGpuMode)
                 {
-                    graph["detection_boxes"][0],
-                    graph["detection_scores"][0],
-                    graph["detection_classes"][0],
-                    // graph["num_detections"][0],
-                };
+                    this._detectionOutputTensors = new[]
+                    {
+                        graph["concat_10"][0],
+                        graph["concat_11"][0],
+                        graph["concat_12"][0],
+                    };
+                }
+                else
+                {
+                    this._detectionOutputTensors = new[]
+                    {
+                        graph["concat_9"][0],
+                        graph["mul_6"][0],
+                    };
+                }
             }
         }
 
@@ -40,7 +60,8 @@ namespace TensorFlowSharpSSD
         {
             var graph = new TFGraph();
             var input = graph.Placeholder(TFDataType.String);
-            var rawImage = graph.DecodeRaw(input, TFDataType.UInt8);
+
+            var maxValue = graph.Const(255.0f, TFDataType.Float);
 
             var shape = graph.Stack(new[]
             {
@@ -50,7 +71,12 @@ namespace TensorFlowSharpSSD
                 graph.Const(3, TFDataType.Int32),
             });
 
-            var output = graph.Reshape(rawImage, shape);
+            TFOutput output;
+
+            output = graph.DecodeRaw(input, TFDataType.UInt8);
+            output = graph.Cast(output, TFDataType.Float);
+            output = graph.Div(output, maxValue);
+            output = graph.Reshape(output, shape);
 
             return (new TFSession(graph), input, output);
         }
@@ -64,15 +90,17 @@ namespace TensorFlowSharpSSD
                 var value = TFTensor.CreateString(imageData);
 
                 return session.Run(
-                    inputValues: new[] { value  },
-                    inputs     : new[] { input  },
-                    outputs    : new[] { output }
+                    inputValues: new[] { value },
+                    inputs: new[] { input },
+                    outputs: new[] { output }
                 )[0];
             }
         }
 
-        public Box[][] Predict(byte[] data, int width, int height)
+        public Box[][] Predict(byte[] data, int originalWidth, int originalHeight)
         {
+            (int width, int height) = (this.Width, this.Height);
+
             var tensor = this.CreateTensor(data, width, height);
 
             var runner = this._session.GetRunner();
@@ -82,54 +110,81 @@ namespace TensorFlowSharpSSD
                 .Fetch(this._detectionOutputTensors)
                 .Run();
 
-            var boxes = output[0].GetValue<float[][][]>();
-            var scores = output[1].GetValue<float[][]>();
-            var classes = output[2].GetValue<float[][]>();
+            float widthCoe = originalWidth / (float)this.Width;
+            float heightCoe = originalHeight / (float)this.Height;
 
-            var predicts = new Box[boxes.Length][];
-
-            for (int i = 0; i < predicts.Length; ++i)
+            if (this.IsGpuMode)
             {
-                predicts[i] = GetBoxes(width, height, boxes[i], scores[i], classes[i]);
+                var boxes = output[0].GetValue<float[][]>();
+                var scores = output[1].GetValue<float[]>();
+                var labels = output[2].GetValue<int[]>();
+
+                Box[] result;
+
+                if (boxes == null || scores == null || labels == null)
+                {
+                    result = new Box[0];
+                }
+                else
+                {
+                    result = GetBoxes(width, height, widthCoe, heightCoe, boxes, scores, labels);
+                }
+
+                return new[] { result };
+            }
+            else
+            {
+                var boxes = output[0].GetValue<float[][][]>();
+                var scores = output[1].GetValue<float[][][]>();
+
+                throw new NotImplementedException();
             }
 
-            return predicts;
+            //var boxes = output[0].GetValue<float[][][]>();
+            //var scores = output[1].GetValue<float[][]>();
+            //var classes = output[2].GetValue<float[][]>();
+
+            //var predicts = new Box[boxes.Length][];
+
+            //for (int i = 0; i < predicts.Length; ++i)
+            //{
+            //    predicts[i] = GetBoxes(width, height, boxes[i], scores[i], classes[i]);
+            //}
+
+            //return predicts;
         }
 
         public Box[] Predict(Bitmap image)
         {
-            var data = ToBytes(image);
+            var data = ToBytes(image, this.Width, this.Height);
 
             return Predict(data, image.Width, image.Height)[0];
         }
 
-        private static Box[] GetBoxes(int width, int height, float[][] boxes, float[] scores, float[] classes)
+        private static Box[] GetBoxes(int width, int height, float widthCoe, float heightCoe, float[][] boxes, float[] scores, int[] classes)
         {
             var results = new Box[boxes.Length];
 
             for (int i = 0; i < results.Length; ++i)
             {
                 var box = boxes[i];
-                (float ymin, float xmin) = (box[0], box[1]);
-                (float ymax, float xmax) = (box[2], box[3]);
+                (float x, float y) = (box[0] * widthCoe, box[1] * heightCoe);
+                (float r, float b) = (box[2] * widthCoe, box[3] * heightCoe);
 
-                int classId = (int)classes[i];
+                int classId = classes[i] + 1;
                 float score = scores[i];
 
-                int x = (int)(xmin * width - 1f);
-                int y = (int)(ymin * height - 1f);
-                int w = (int)((xmax - xmin) * width);
-                int h = (int)((ymax - ymin) * height);
-
-                results[i] = new Box(classId, score, x, y, w, h);
+                results[i] = new Box(classId, score, (int)x, (int)y, (int)(r - x), (int)(b - y));
             }
 
             return results;
         }
 
-        private static byte[] ToBytes(Bitmap image)
+        private static byte[] ToBytes(Bitmap source, int width, int height)
         {
-            var rect = new Rectangle(0, 0, image.Width, image.Height);
+            Bitmap image = ResizeImage(source, width, height);
+
+            var rect = new Rectangle(0, 0, width, height);
             var imageData = image.LockBits(rect, ImageLockMode.ReadOnly, image.PixelFormat);
 
             try
@@ -149,7 +204,21 @@ namespace TensorFlowSharpSSD
             finally
             {
                 image.UnlockBits(imageData);
+                image.Dispose();
             }
+        }
+
+        private static Bitmap ResizeImage(Bitmap source, int width, int height)
+        {
+            var destImage = new Bitmap(width, height, source.PixelFormat);
+
+            using (var g = Graphics.FromImage(destImage))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBilinear;
+                g.DrawImage(source, 0, 0, width, height);
+            }
+
+            return destImage;
         }
 
         private static unsafe byte[] ToRGBFrom24Bpp(BitmapData imageData)
